@@ -1,0 +1,13 @@
+{
+  "name": "ollama-fleet-integrator",
+  "version": "1.0.0",
+  "description": "Enables Gemini agents to use local Ollama nodes for offloading",
+  "mcpServers": [
+    {
+      "id": "ollama-bridge",
+      "command": "python3",
+      "args": ["tools/ollama_tool.py"],
+      "transport": "stdio"
+    }
+  ]
+}
