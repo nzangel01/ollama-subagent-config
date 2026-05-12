@@ -3,6 +3,34 @@ import json
 import argparse
 import sys
 
+# Node Performance Metadata
+NODE_CONFIG = {
+    ".5": {
+        "host": "192.168.1.5",
+        "name": "Kokkoro",
+        "gpu": "2x RTX 3060 (24GB VRAM Total)",
+        "perf": "High (Ampere)",
+        "best_for": "Reasoning, Fast Inference, Medium Models",
+        "vram_per_gpu": 12
+    },
+    ".8": {
+        "host": "192.168.1.8",
+        "name": "Pecorine",
+        "gpu": "4x Tesla P100 (64GB VRAM Total)",
+        "perf": "High Capacity (Pascal)",
+        "best_for": "Large Models (>20B), Massive Batching",
+        "vram_per_gpu": 16
+    },
+    ".10": {
+        "host": "192.168.1.10",
+        "name": "Kumo",
+        "gpu": "3x Tesla P4 (24GB VRAM Total)",
+        "perf": "Efficient (Pascal)",
+        "best_for": "Light Tasks, Classification, Small Models (<8B)",
+        "vram_per_gpu": 8
+    }
+}
+
 def get_node_info(host):
     """Fetch active models and VRAM usage from a node."""
     try:
@@ -13,27 +41,36 @@ def get_node_info(host):
         return None
     return None
 
-def find_best_node(nodes, target_model):
-    """Select the best node based on whether the model is already loaded or which has fewer models."""
+def find_best_node(target_model):
+    """Smarter selection based on performance metadata and current load."""
     best_node = None
+    best_host = None
     min_load = float('inf')
     
-    for key, host in nodes.items():
+    # Heuristic: Determine if model is 'large' based on name (rough estimate)
+    is_large = any(x in target_model.lower() for x in ["31b", "32b", "70b", "deepseek-r1:3"])
+    
+    for key, info in NODE_CONFIG.items():
+        host = info["host"]
         models = get_node_info(host)
-        if models is None: continue # Skip unreachable
+        if models is None: continue
         
-        # Priority 1: Model already loaded
+        # Priority 1: Model already loaded (Sticky session)
         for m in models:
             if target_model in m['name']:
                 return host
         
-        # Priority 2: Least loaded node
+        # Priority 2: Match by capability
+        if is_large and key == ".8": # Large models prefer Pecorine
+            return host
+        
+        # Priority 3: Least loaded node
         load = len(models)
         if load < min_load:
             min_load = load
-            best_node = host
+            best_host = host
             
-    return best_node
+    return best_host
 
 def query_ollama(host, model, prompt, timeout=120):
     if not host:
@@ -55,50 +92,41 @@ def query_ollama(host, model, prompt, timeout=120):
     except Exception as e:
         return f"Error connecting to Ollama at {host}: {str(e)}"
 
-def list_nodes(nodes):
-    print(f"{'Node':<10} {'Status':<12} {'Loaded Models'}")
-    print("-" * 40)
-    for key, host in nodes.items():
+def list_nodes():
+    print(f"{'Node':<6} {'Name':<10} {'Status':<10} {'Best For':<35} {'Loaded Models'}")
+    print("-" * 100)
+    for key, info in NODE_CONFIG.items():
+        host = info["host"]
         try:
             resp = requests.get(f"http://{host}:11434/api/ps", timeout=2)
             if resp.status_code == 200:
                 models = [m['name'] for m in resp.json().get('models', [])]
                 status = "✅ ONLINE"
                 model_str = ", ".join(models) if models else "Idle"
-                print(f"{key:<10} {status:<12} {model_str}")
+                print(f"{key:<6} {info['name']:<10} {status:<10} {info['best_for']:<35} {model_str}")
             else:
-                print(f"{key:<10} ❌ ERROR      Status {resp.status_code}")
+                print(f"{key:<6} {info['name']:<10} ❌ ERROR")
         except:
-            print(f"{key:<10} ⚠️ UNREACHABLE")
+            print(f"{key:<6} {info['name']:<10} ⚠️ OFFLINE")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Query local Ollama fleet with Auto-Load Balancing")
+    parser = argparse.ArgumentParser(description="Query local Ollama fleet with Performance-Aware Routing")
     parser.add_argument("--node", default="auto", help=".5, .10, .8 or 'auto' (default)")
     parser.add_argument("--model", default="gemma4:e4b")
     parser.add_argument("--prompt", help="Prompt to send")
     parser.add_argument("--timeout", type=int, default=120, help="Request timeout in seconds")
-    parser.add_argument("--list-nodes", action="store_true", help="List all nodes and their current load")
+    parser.add_argument("--list-nodes", action="store_true", help="List all nodes, specs and their current load")
     
     args = parser.parse_args()
     
-    nodes = {
-        ".5": "192.168.1.5",
-        ".10": "192.168.1.10",
-        ".8": "192.168.1.8"
-    }
-    
     if args.list_nodes:
-        list_nodes(nodes)
+        list_nodes()
     elif args.prompt:
         if args.node == "auto":
-            host = find_best_node(nodes, args.model)
-            if host:
-                # Map back to key for display
-                node_key = [k for k, v in nodes.items() if v == host][0]
-                # print(f"[AUTO] Selected node {node_key}")
-                pass
+            host = find_best_node(args.model)
         else:
-            host = nodes.get(args.node, args.node)
+            # Map shorthand or use direct IP
+            host = NODE_CONFIG.get(args.node, {"host": args.node})["host"]
             
         print(query_ollama(host, args.model, args.prompt, args.timeout))
     else:
