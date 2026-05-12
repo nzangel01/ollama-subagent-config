@@ -7,6 +7,15 @@ This repository provides tools and configurations to allow AI agents (Gemini, Cl
 - **Pecorine (.8)**: 4x Tesla P100 (16GB) - Best for high VRAM batch tasks.
 - **Kumo (.10)**: 3x Tesla P4 (8GB) - Best for fast `gemma4:e4b` classification.
 
+## Available Models (Verified)
+The following models are synchronized across the cluster and tested for agent workflows:
+- **`vaultbox/qwen3.5-uncensored:9b`**: (Tested & Recommended) Best for metadata extraction, folder analysis, and bypassing filtering restrictions.
+- **`gemma4:31b`**: Best for complex reasoning and deep analysis.
+- **`qwen2.5:14b` / `qwen2.5:7b`**: Excellent multi-lingual and coding capabilities.
+- **`gemma4:e4b`**: Ultra-fast classification and simple parsing.
+- **`deepseek-r1:32b` / `phi4:14b`**: Alternative reasoning models.
+*Note: Use `python3 tools/ollama_tool.py --list-nodes` to see real-time availability.*
+
 ## Core Tool Usage
 The core script is `tools/ollama_tool.py`. All agents use this to bridge to the local fleet.
 ```bash
