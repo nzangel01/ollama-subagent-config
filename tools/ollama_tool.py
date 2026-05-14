@@ -70,6 +70,19 @@ NODE_CONFIG = {
         "best_for": "Vision, Fast Medium Models, Streaming",
         "priority": 2,
     },
+    ".79": {
+        "host": "192.168.1.79",
+        "port": 11434,
+        "name": "TAKAO",
+        "gpu": "CPU-only (Xeon D-1581, 32T)",
+        "vram_per_gpu": 0,
+        "gpu_count": 0,
+        "vram_total": 0,
+        "ram_gb": 36,
+        "best_for": "Small Models (<4B) CPU fallback, Classification, Always-on NAS node",
+        "priority": 5,
+        "cpu_only": True,
+    },
 }
 
 _health_cache = {}
@@ -142,9 +155,18 @@ def find_best_nodes(target_model, preferred_node=None):
         if any(target_model in m.get("name", "") for m in loaded):
             score -= 100
 
-        # VRAM penalty if node likely can't fit model
-        if info["vram_total"] < vram_needed:
-            score += 50
+        # CPU-only nodes: skip for large/vision models, use RAM headroom
+        if info.get("cpu_only"):
+            if is_large or is_vision:
+                continue  # ไม่ส่ง large/vision ไป CPU node
+            ram_gb = info.get("ram_gb", 0)
+            if ram_gb < vram_needed * 2:  # RAM ต้องการ ~2x VRAM estimate
+                score += 50
+            score += 30  # CPU slow กว่า GPU เสมอ — prefer GPU first
+        else:
+            # VRAM penalty if node likely can't fit model
+            if info["vram_total"] < vram_needed:
+                score += 50
 
         # Prefer Kokkoro/Pecorine for large models
         if is_large and key in (".5", ".8"):
@@ -214,8 +236,13 @@ def list_nodes():
         else:
             status = "❌ OFFLINE"
             loaded_str = avail_str = "-"
-        gpu_str = f"{info['gpu']} ({info['gpu_count']}x{info['vram_per_gpu']}GB)"
-        print(f"{key:<5} {info['name']:<10} {status:<10} {gpu_str:<28} {info['vram_total']:<4}GB    {loaded_str:<20} {avail_str}")
+        if info.get("cpu_only"):
+            gpu_str = f"{info['gpu']}"
+            mem_str = f"{info.get('ram_gb', '?')}GB RAM"
+        else:
+            gpu_str = f"{info['gpu']} ({info['gpu_count']}x{info['vram_per_gpu']}GB)"
+            mem_str = f"{info['vram_total']}GB VRAM"
+        print(f"{key:<5} {info['name']:<10} {status:<10} {gpu_str:<30} {mem_str:<12} {loaded_str:<20} {avail_str}")
     print()
 
 
