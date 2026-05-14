@@ -4,6 +4,17 @@ import time
 
 # Node config — GPU verified 2026-05-14
 NODE_CONFIG = {
+    ".6": {
+        "host": "192.168.1.6",
+        "port": 11434,
+        "name": "Yuki",
+        "gpu": "RX 7900 XTX (ROCm)",
+        "vram_per_gpu": 24,
+        "gpu_count": 1,
+        "vram_total": 24,
+        "best_for": "Large Models (32b), ROCm/AMD, Fast Reasoning",
+        "priority": 1,
+    },
     ".5": {
         "host": "192.168.1.5",
         "port": 11434,
