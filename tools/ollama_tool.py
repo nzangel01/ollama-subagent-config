@@ -70,8 +70,8 @@ NODE_CONFIG = {
         "best_for": "Vision, Fast Medium Models, Streaming",
         "priority": 2,
     },
-    ".79": {
-        "host": "192.168.1.79",
+    ".240": {
+        "host": "192.168.1.240",
         "port": 11434,
         "name": "TAKAO",
         "gpu": "CPU-only (Xeon D-1581, 32T)",
