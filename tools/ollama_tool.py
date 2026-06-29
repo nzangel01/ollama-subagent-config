@@ -1,235 +1,285 @@
 import requests
-import json
 import argparse
-import sys
-import re
+import time
 
-# Node Performance Metadata
+# Node config — GPU verified 2026-06-29
 NODE_CONFIG = {
-    ".25": {
-        "host": "192.168.1.25",
-        "name": "Silvia",
-        "gpu": "Intel Arc B580 (12GB VRAM)",
-        "perf": "Medium-High (Battlemage)",
-        "best_for": "Main Logic, Local Inference, AV1 Encode",
-        "vram_per_gpu": 12
-    },
     ".6": {
         "host": "192.168.1.6",
+        "port": 11434,
         "name": "Yuki",
-        "gpu": "AMD RX 7900 XTX (24GB VRAM)",
-        "perf": "High (RDNA3)",
-        "best_for": "Large Context, Fast Inference, ROCm Tasks (LOCKED - bot active)",
-        "vram_per_gpu": 24
+        "gpu": "RX 7900 XTX (ROCm)",
+        "vram_per_gpu": 24,
+        "gpu_count": 1,
+        "vram_total": 24,
+        "best_for": "Large Models (32b), ROCm/AMD, Fast Reasoning",
+        "priority": 1,
     },
     ".5": {
         "host": "192.168.1.5",
+        "port": 11434,
         "name": "Kokkoro",
-        "gpu": "2x RTX 3060 (24GB VRAM Total)",
-        "perf": "Medium-High (Ampere)",
-        "best_for": "Reasoning, Fast Inference, CUDA Tasks",
-        "vram_per_gpu": 12
+        "gpu": "2x RTX 3060",
+        "vram_per_gpu": 12,
+        "gpu_count": 2,
+        "vram_total": 24,
+        "best_for": "Reasoning, Large Models (31b/32b), Fast Inference",
+        "priority": 1,
     },
-    ".7": {
-        "host": "192.168.1.7",
-        "name": "Sheffy",
-        "gpu": "RTX 2080Ti + Arc A380",
-        "perf": "Vulkan Fix Needed / Port Unresponsive",
-        "best_for": "Offline",
-        "vram_per_gpu": 11
-    },
-    ".10": {
-        "host": "192.168.1.10",
-        "name": "Kumo",
-        "gpu": "3x Tesla P4 (24GB VRAM Total)",
-        "perf": "Efficient (Pascal)",
-        "best_for": "Classification, Small Models (<8B)",
-        "vram_per_gpu": 8
-    },
-    ".80": {
-        "host": "192.168.1.80",
-        "name": "Kurumi",
-        "gpu": "RTX 3080 (10GB VRAM)",
-        "perf": "High (Ampere)",
-        "best_for": "Fast Reasoning, Vision Tasks",
-        "vram_per_gpu": 10
-    },
-    ".117": {
-        "host": "192.168.1.117",
-        "name": "Silvia18",
-        "gpu": "Intel Arc B580 / CPU (Secondary Interface)",
-        "perf": "Medium-High / 25 Models loaded",
-        "best_for": "Multi-model fallbacks",
-        "vram_per_gpu": 12
-    },
+    # .8 Pecorine removed — decommissioned 2026-06-29
     ".13": {
         "host": "192.168.1.13",
+        "port": 11434,
         "name": "cmp70hx-gpu",
-        "gpu": "NVIDIA CMP 70HX (8GB VRAM)",
-        "perf": "Medium (Ampere, no display)",
+        "gpu": "NVIDIA CMP 70HX",
+        "vram_per_gpu": 8,
+        "gpu_count": 1,
+        "vram_total": 8,
         "best_for": "Classification, gemma4:e4b",
-        "vram_per_gpu": 8
+        "priority": 3,
     },
     ".14": {
         "host": "192.168.1.14",
+        "port": 11434,
         "name": "cmp30hx-1",
-        "gpu": "NVIDIA CMP 30HX (6GB VRAM)",
-        "perf": "Medium (Turing, no display)",
+        "gpu": "NVIDIA CMP 30HX",
+        "vram_per_gpu": 6,
+        "gpu_count": 1,
+        "vram_total": 6,
         "best_for": "Classification, gemma4:e4b",
-        "vram_per_gpu": 6
+        "priority": 3,
     },
     ".16": {
         "host": "192.168.1.16",
+        "port": 11434,
         "name": "cmp30hx-2",
-        "gpu": "NVIDIA CMP 30HX (6GB VRAM)",
-        "perf": "Medium (Turing, no display)",
+        "gpu": "NVIDIA CMP 30HX",
+        "vram_per_gpu": 6,
+        "gpu_count": 1,
+        "vram_total": 6,
         "best_for": "Classification, gemma4:e4b",
-        "vram_per_gpu": 6
+        "priority": 3,
+    },
+    ".10": {
+        "host": "192.168.1.10",
+        "port": 11435,  # 11434 down — use 11435
+        "name": "Kumo",
+        "gpu": "3x Tesla P4",
+        "vram_per_gpu": 8,
+        "gpu_count": 3,
+        "vram_total": 23,  # 8192+7680+7680 MiB (mixed lot)
+        "best_for": "Light Tasks, Classification, Small Models (<4B)",
+        "priority": 4,
+    },
+    ".24": {
+        "host": "192.168.1.24",
+        "port": 11434,
+        "name": "Silvia",
+        "gpu": "Intel Arc B580 (Battlemage G21)",
+        "vram_per_gpu": 12,
+        "gpu_count": 1,
+        "vram_total": 12,
+        "best_for": "Code, Embedding, Local Priority, Medium Models",
+        "priority": 3,
+    },
+    ".80": {
+        "host": "192.168.1.80",
+        "port": 11434,
+        "name": "Kurumi",
+        "gpu": "RTX 3080",
+        "vram_per_gpu": 10,
+        "gpu_count": 1,
+        "vram_total": 10,
+        "best_for": "Vision, Fast Medium Models, Streaming",
+        "priority": 2,
     },
     ".240": {
         "host": "192.168.1.240",
+        "port": 11434,
         "name": "TAKAO",
-        "gpu": "Quadro P400 (2GB VRAM)",
-        "perf": "Low Power (Pascal)",
-        "best_for": "Light Metadata, CPU Fallback",
-        "vram_per_gpu": 2
-    }
+        "gpu": "Quadro P400 (Pascal)",
+        "vram_per_gpu": 2,
+        "gpu_count": 1,
+        "vram_total": 2,
+        "best_for": "Tiny Models (<=2B), gemma4:e2b, gemma3:1b, Always-on NAS node",
+        "priority": 4,
+    },
 }
 
-def sanitize_input(text):
-    """Prevent basic command injection and strip dangerous control characters."""
-    if not text: return ""
-    # Strip potentially dangerous shell characters if this output is piped
-    clean = re.sub(r'[;&|`$<>!]', '', text)
-    # Remove non-printable characters except newlines/tabs
-    clean = "".join(char for char in clean if char.isprintable() or char in "\n\t")
-    return clean.strip()
+_health_cache = {}
+HEALTH_CACHE_TTL = 30
 
-def get_node_info(host):
-    """Fetch active models and available models from a node."""
-    info = {"active": [], "available": []}
+
+def check_node_health(host, port, timeout=2):
+    key = f"{host}:{port}"
+    now = time.time()
+    if key in _health_cache:
+        ts, ok = _health_cache[key]
+        if now - ts < HEALTH_CACHE_TTL:
+            return ok
     try:
-        # Check currently loaded models
-        resp_ps = requests.get(f"http://{host}:11434/api/ps", timeout=2)
-        if resp_ps.status_code == 200:
-            info["active"] = [m['name'] for m in resp_ps.json().get("models", [])]
-        
-        # Check available local models (even if not loaded)
-        resp_tags = requests.get(f"http://{host}:11434/api/tags", timeout=2)
-        if resp_tags.status_code == 200:
-            info["available"] = [m['name'] for m in resp_tags.json().get("models", [])]
-            
-        return info
-    except:
-        return None
+        resp = requests.get(f"http://{host}:{port}/api/ps", timeout=timeout)
+        ok = resp.status_code == 200
+    except Exception:
+        ok = False
+    _health_cache[key] = (now, ok)
+    return ok
 
-def find_best_node(target_model):
-    """Smarter selection based on presence, performance metadata, and current load."""
-    best_host = None
-    min_load = float('inf')
-    
-    # Heuristic: Determine if model is 'large' based on name
-    is_large = any(x in target_model.lower() for x in ["31b", "32b", "70b", "deepseek-r1:3"])
-    
+
+def get_loaded_models(host, port, timeout=2):
+    try:
+        resp = requests.get(f"http://{host}:{port}/api/ps", timeout=timeout)
+        if resp.status_code == 200:
+            return resp.json().get("models", [])
+    except Exception:
+        pass
+    return []
+
+
+def get_available_models(host, port, timeout=3):
+    try:
+        resp = requests.get(f"http://{host}:{port}/api/tags", timeout=timeout)
+        if resp.status_code == 200:
+            return [m["name"] for m in resp.json().get("models", [])]
+    except Exception:
+        pass
+    return []
+
+
+def _estimate_vram(model_name):
+    name = model_name.lower()
+    for tag, vram in [("70b", 45), ("32b", 20), ("31b", 20), ("27b", 18),
+                      ("14b", 10), ("13b", 9), ("11b", 8), ("9b", 6),
+                      ("8b", 5), ("7b", 5), ("4b", 3), ("3b", 2), ("1b", 1)]:
+        if tag in name:
+            return vram
+    return 5
+
+
+def find_best_nodes(target_model, preferred_node=None):
+    vram_needed = _estimate_vram(target_model)
+    is_large = vram_needed >= 18
+    is_vision = any(x in target_model.lower() for x in ["vision", "llava"])
+
     candidates = []
-    
     for key, info in NODE_CONFIG.items():
-        host = info["host"]
-        node_info = get_node_info(host)
-        if node_info is None: continue
-        
-        # Priority 1: Model already loaded (Sticky session)
-        if any(target_model in m for m in node_info["active"]):
-            return host
-            
-        # Check if model exists on this node
-        exists = any(target_model in m for m in node_info["available"])
-        if exists:
-            # Priority 2: Match by capability (if model exists on preferred hardware)
-            if is_large and key == ".5":
-                return host
-            
-            # Add to potential candidates if exists but not active
-            candidates.append((host, len(node_info["active"])))
+        host, port = info["host"], info["port"]
+        if preferred_node and preferred_node != key:
+            continue
+        if not check_node_health(host, port):
+            continue
 
-    # Priority 3: Least loaded node among those that have the model
-    if candidates:
-        candidates.sort(key=lambda x: x[1])
-        return candidates[0][0]
-            
-    # Fallback: Least loaded node across entire fleet (Ollama will try to pull or error)
-    for key, info in NODE_CONFIG.items():
-        host = info["host"]
-        node_info = get_node_info(host)
-        if node_info and len(node_info["active"]) < min_load:
-            min_load = len(node_info["active"])
-            best_host = host
-            
-    return best_host
+        loaded = get_loaded_models(host, port)
+        score = info["priority"] * 10
 
-def query_ollama(host, model, prompt, timeout=120):
-    if not host:
-        return "Error: No suitable Ollama node found."
-        
-    # Sanitize prompt before sending to local fleet
-    safe_prompt = sanitize_input(prompt)
-    
-    url = f"http://{host}:11434/api/generate"
-    payload = {
-        "model": model,
-        "prompt": safe_prompt,
-        "stream": False,
-        "format": "json" if "json" in safe_prompt.lower() else None
-    }
+        # Sticky session — model already loaded
+        if any(target_model in m.get("name", "") for m in loaded):
+            score -= 100
+
+        # CPU-only nodes: skip for large/vision models, use RAM headroom
+        if info.get("cpu_only"):
+            if is_large or is_vision:
+                continue  # ไม่ส่ง large/vision ไป CPU node
+            ram_gb = info.get("ram_gb", 0)
+            if ram_gb < vram_needed * 2:  # RAM ต้องการ ~2x VRAM estimate
+                score += 50
+            score += 30  # CPU slow กว่า GPU เสมอ — prefer GPU first
+        else:
+            # VRAM penalty if node likely can't fit model
+            if info["vram_total"] < vram_needed:
+                score += 50
+
+        # Prefer Kokkoro/Pecorine for large models
+        if is_large and key in (".5", ".8"):
+            score -= 20
+
+        # Prefer Kurumi for vision
+        if is_vision and key == ".80":
+            score -= 15
+
+        # Prefer local Silvia for small tasks
+        if not is_large and key == ".24":
+            score -= 5
+
+        candidates.append((score, host, port))
+
+    candidates.sort()
+    return [(h, p) for _, h, p in candidates]
+
+
+def query_ollama(host, port, model, prompt, timeout=120):
+    url = f"http://{host}:{port}/api/generate"
+    payload = {"model": model, "prompt": prompt, "stream": False}
+    if "json" in prompt.lower():
+        payload["format"] = "json"
     try:
-        response = requests.post(url, json=payload, timeout=timeout)
-        response.raise_for_status()
-        return response.json().get("response", "No response from model")
+        resp = requests.post(url, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json().get("response", "No response")
     except requests.exceptions.Timeout:
-        return f"Error: Request timed out after {timeout} seconds on {host}."
+        return f"Error: Timeout ({timeout}s) on {host}:{port}"
     except Exception as e:
-        return f"Error connecting to Ollama at {host}: {str(e)}"
+        return f"Error: {host}:{port} — {e}"
+
+
+def query_with_fallback(model, prompt, timeout=120, preferred_node=None):
+    nodes = find_best_nodes(model, preferred_node)
+    if not nodes:
+        names = ", ".join(
+            f"{v['name']}({v['host']}:{v['port']}) [{v['gpu']} {v['vram_total']}GB]"
+            for v in NODE_CONFIG.values()
+        )
+        return f"Error: All Ollama nodes offline. Checked: {names}"
+
+    last_err = ""
+    for host, port in nodes:
+        result = query_ollama(host, port, model, prompt, timeout)
+        if not result.startswith("Error:"):
+            return result
+        _health_cache.pop(f"{host}:{port}", None)
+        last_err = result
+
+    return f"Error: All nodes failed. Last: {last_err}"
+
 
 def list_nodes():
-    print(f"{'Node':<6} {'Name':<10} {'Status':<10} {'Best For':<35} {'Loaded Models'}")
-    print("-" * 100)
+    print(f"\n{'Node':<5} {'Name':<10} {'Status':<10} {'GPU':<28} {'VRAM':<10} {'Loaded':<20} Available")
+    print("-" * 115)
     for key, info in NODE_CONFIG.items():
-        host = info["host"]
-        try:
-            resp = requests.get(f"http://{host}:11434/api/ps", timeout=2)
-            if resp.status_code == 200:
-                models = [m['name'] for m in resp.json().get('models', [])]
-                status = "✅ ONLINE"
-                model_str = ", ".join(models) if models else "Idle"
-                print(f"{key:<6} {info['name']:<10} {status:<10} {info['best_for']:<35} {model_str}")
-            else:
-                print(f"{key:<6} {info['name']:<10} ❌ ERROR")
-        except:
-            print(f"{key:<6} {info['name']:<10} ⚠️ OFFLINE")
+        host, port = info["host"], info["port"]
+        online = check_node_health(host, port, timeout=3)
+        if online:
+            loaded = [m["name"] for m in get_loaded_models(host, port)]
+            available = get_available_models(host, port)
+            status = "✅ ONLINE"
+            loaded_str = ", ".join(loaded) if loaded else "Idle"
+            avail_str = ", ".join(available[:3]) + ("…" if len(available) > 3 else "")
+        else:
+            status = "❌ OFFLINE"
+            loaded_str = avail_str = "-"
+        if info.get("cpu_only"):
+            gpu_str = f"{info['gpu']}"
+            mem_str = f"{info.get('ram_gb', '?')}GB RAM"
+        else:
+            gpu_str = f"{info['gpu']} ({info['gpu_count']}x{info['vram_per_gpu']}GB)"
+            mem_str = f"{info['vram_total']}GB VRAM"
+        print(f"{key:<5} {info['name']:<10} {status:<10} {gpu_str:<30} {mem_str:<12} {loaded_str:<20} {avail_str}")
+    print()
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Query local Ollama fleet with Performance-Aware Routing & Security")
-    parser.add_argument("--node", default="auto", help=".5, .10, .25, .80, .117 or 'auto' (default)")
+    parser = argparse.ArgumentParser(description="Ollama Fleet — Fallback Routing")
+    parser.add_argument("--node", default="auto", help=".5/.8/.10/.24/.80 or 'auto'")
     parser.add_argument("--model", default="gemma4:e4b")
     parser.add_argument("--prompt", help="Prompt to send")
-    parser.add_argument("--timeout", type=int, default=120, help="Request timeout in seconds")
-    parser.add_argument("--list-nodes", action="store_true", help="List all nodes, specs and their current load")
-    
+    parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--list-nodes", action="store_true")
     args = parser.parse_args()
-    
+
     if args.list_nodes:
         list_nodes()
     elif args.prompt:
-        # Sanitize model name as well to be safe
-        safe_model = re.sub(r'[^a-zA-Z0-9:._-]', '', args.model)
-        
-        if args.node == "auto":
-            host = find_best_node(safe_model)
-        else:
-            # Map shorthand or use direct IP
-            node_key = args.node if args.node.startswith(".") else f".{args.node}" if args.node.isdigit() else args.node
-            host = NODE_CONFIG.get(node_key, {"host": args.node})["host"]
-            
-        print(query_ollama(host, safe_model, args.prompt, args.timeout))
+        preferred = None if args.node == "auto" else args.node
+        print(query_with_fallback(args.model, args.prompt, args.timeout, preferred))
     else:
         parser.print_help()
