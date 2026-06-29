@@ -3,6 +3,7 @@ import argparse
 import time
 import os
 import sys
+import json
 
 # Load node config from nodes.local.py (gitignored, private)
 # Copy tools/nodes.example.py → tools/nodes.local.py and fill in your nodes.
@@ -152,6 +153,44 @@ def query_with_fallback(model, prompt, timeout=120, preferred_node=None):
     return f"Error: All nodes failed. Last: {last_err}"
 
 
+ORCHESTRATOR_MODEL = "erukude/multiagent-orchestrator:3b"
+# Prefer kumo (.10) for orchestrator — always-on, low latency for 3B
+ORCHESTRATOR_NODE = (".10", ".5", ".80")  # fallback order: kumo → kokkoro → kurumi
+
+
+def orchestrate(task: str, agents: list[dict]) -> dict | None:
+    """Ask multiagent-orchestrator which agent to call. Returns parsed JSON or None."""
+    for key in ORCHESTRATOR_NODE:
+        if key not in NODE_CONFIG:
+            continue
+        info = NODE_CONFIG[key]
+        host, port = info["host"], info["port"]
+        if not check_node_health(host, port):
+            continue
+        try:
+            resp = requests.post(
+                f"http://{host}:{port}/api/chat",
+                json={
+                    "model": ORCHESTRATOR_MODEL,
+                    "stream": False,
+                    "messages": [{"role": "user", "content":
+                        f"Task: {task}\nAvailable agents: {agents}\n"
+                        "Pick the best agent and return JSON only."
+                    }],
+                },
+                timeout=30,
+            )
+            content = resp.json().get("message", {}).get("content", "")
+            # Extract JSON from response
+            import re as _re
+            m = _re.search(r'\{.*\}', content, _re.DOTALL)
+            if m:
+                return json.loads(m.group())
+        except Exception:
+            pass
+    return None
+
+
 def list_nodes():
     print(f"\n{'Node':<5} {'Name':<10} {'Status':<10} {'GPU':<28} {'VRAM':<10} {'Loaded':<20} Available")
     print("-" * 115)
@@ -184,10 +223,22 @@ if __name__ == "__main__":
     parser.add_argument("--prompt", help="Prompt to send")
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--list-nodes", action="store_true")
+    parser.add_argument("--orchestrate", help="Describe task to route via multiagent-orchestrator")
+    parser.add_argument("--agents", help='JSON agent list e.g. \'[{"name":"a","skills":["x"]}]\'')
     args = parser.parse_args()
 
     if args.list_nodes:
         list_nodes()
+    elif args.orchestrate:
+        agents = json.loads(args.agents) if args.agents else [
+            {"name": "text-parser", "skills": ["filename", "regex", "metadata"]},
+            {"name": "vision-classifier", "skills": ["image", "video", "OCR"]},
+            {"name": "embedding-search", "skills": ["semantic", "RAG", "similarity"]},
+            {"name": "code-executor", "skills": ["python", "bash", "rename", "move"]},
+            {"name": "summarizer", "skills": ["document", "text", "Thai", "Japanese"]},
+        ]
+        result = orchestrate(args.orchestrate, agents)
+        print(json.dumps(result, ensure_ascii=False, indent=2) if result else "Error: orchestrator unavailable")
     elif args.prompt:
         preferred = None if args.node == "auto" else args.node
         print(query_with_fallback(args.model, args.prompt, args.timeout, preferred))

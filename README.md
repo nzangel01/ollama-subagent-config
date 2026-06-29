@@ -9,7 +9,7 @@ This repository provides tools and configurations to allow AI agents (Gemini, Cl
 | Silvia | .25 | Arc B580 | 12GB | Main logic, local inference |
 | Kokkoro | .5 | 2x RTX 3060 | 24GB | `gemma4:31b` reasoning (offline 17:00 daily) |
 | Kurumi | .80 | RTX 3080 | 10GB | Fast reasoning, vision |
-| Kumo | .10 | 3x Tesla P4 | 24GB | Classification, `gemma4:e4b` |
+| Kumo | .10 | 2x Tesla P4 | 16GB | Classification, `gemma4:e4b` |
 | cmp70hx-gpu | .13 | CMP 70HX | 8GB | Classification, `gemma4:e4b` |
 | cmp30hx-1 | .14 | CMP 30HX | 6GB | Classification, `gemma4:e4b` |
 | cmp30hx-2 | .16 | CMP 30HX | 6GB | Classification, `gemma4:e4b` |
@@ -93,7 +93,7 @@ Exposing the fleet as an **MCP (Model Context Protocol)** server allows Claude a
 
 ## 3. Sub-Agent Workflows
 - **Nodes .13/.14/.16 (CMP fleet)**: Use for `gemma4:e4b` classification (parallel batch).
-- **Node .10 (Kumo)**: Use for `gemma4:e4b` / `gemma4:12b` (P4 x3, efficient).
+- **Node .10 (Kumo)**: Use for `gemma4:e4b` / `gemma4:12b` (2x P4, always-on).
 - **Node .5 (Kokkoro)**: Use for `gemma4:31b` reasoning (offline daily at 17:00).
 - **Node .80 (Kurumi)**: Use for vision tasks / fast reasoning.
-- **Node .8 (Pecorine)**: Use for `deepseek-r1:32b` or batching (max VRAM).
+- **Node .6 (Yuki)**: Use for `gemma4:27b`/`31b` — LOCKED during bot hours.
