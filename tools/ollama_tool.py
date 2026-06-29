@@ -1,110 +1,20 @@
 import requests
 import argparse
 import time
+import os
+import sys
 
-# Node config — GPU verified 2026-06-29
-NODE_CONFIG = {
-    ".6": {
-        "host": "192.168.1.6",
-        "port": 11434,
-        "name": "Yuki",
-        "gpu": "RX 7900 XTX (ROCm)",
-        "vram_per_gpu": 24,
-        "gpu_count": 1,
-        "vram_total": 24,
-        "best_for": "Large Models (32b), ROCm/AMD, Fast Reasoning",
-        "priority": 1,
-    },
-    ".5": {
-        "host": "192.168.1.5",
-        "port": 11434,
-        "name": "Kokkoro",
-        "gpu": "2x RTX 3060",
-        "vram_per_gpu": 12,
-        "gpu_count": 2,
-        "vram_total": 24,
-        "best_for": "Reasoning, Large Models (31b/32b), Fast Inference",
-        "priority": 1,
-    },
-    # .8 Pecorine removed — decommissioned 2026-06-29
-    ".13": {
-        "host": "192.168.1.13",
-        "port": 11434,
-        "name": "cmp70hx-gpu",
-        "gpu": "NVIDIA CMP 70HX",
-        "vram_per_gpu": 8,
-        "gpu_count": 1,
-        "vram_total": 8,
-        "best_for": "Classification, gemma4:e4b",
-        "priority": 3,
-    },
-    ".14": {
-        "host": "192.168.1.14",
-        "port": 11434,
-        "name": "cmp30hx-1",
-        "gpu": "NVIDIA CMP 30HX",
-        "vram_per_gpu": 6,
-        "gpu_count": 1,
-        "vram_total": 6,
-        "best_for": "Classification, gemma4:e4b",
-        "priority": 3,
-    },
-    ".16": {
-        "host": "192.168.1.16",
-        "port": 11434,
-        "name": "cmp30hx-2",
-        "gpu": "NVIDIA CMP 30HX",
-        "vram_per_gpu": 6,
-        "gpu_count": 1,
-        "vram_total": 6,
-        "best_for": "Classification, gemma4:e4b",
-        "priority": 3,
-    },
-    ".10": {
-        "host": "192.168.1.10",
-        "port": 11435,  # 11434 down — use 11435
-        "name": "Kumo",
-        "gpu": "3x Tesla P4",
-        "vram_per_gpu": 8,
-        "gpu_count": 3,
-        "vram_total": 23,  # 8192+7680+7680 MiB (mixed lot)
-        "best_for": "Light Tasks, Classification, Small Models (<4B)",
-        "priority": 4,
-    },
-    ".24": {
-        "host": "192.168.1.24",
-        "port": 11434,
-        "name": "Silvia",
-        "gpu": "Intel Arc B580 (Battlemage G21)",
-        "vram_per_gpu": 12,
-        "gpu_count": 1,
-        "vram_total": 12,
-        "best_for": "Code, Embedding, Local Priority, Medium Models",
-        "priority": 3,
-    },
-    ".80": {
-        "host": "192.168.1.80",
-        "port": 11434,
-        "name": "Kurumi",
-        "gpu": "RTX 3080",
-        "vram_per_gpu": 10,
-        "gpu_count": 1,
-        "vram_total": 10,
-        "best_for": "Vision, Fast Medium Models, Streaming",
-        "priority": 2,
-    },
-    ".240": {
-        "host": "192.168.1.240",
-        "port": 11434,
-        "name": "TAKAO",
-        "gpu": "Quadro P400 (Pascal)",
-        "vram_per_gpu": 2,
-        "gpu_count": 1,
-        "vram_total": 2,
-        "best_for": "Tiny Models (<=2B), gemma4:e2b, gemma3:1b, Always-on NAS node",
-        "priority": 4,
-    },
-}
+# Load node config from nodes.local.py (gitignored, private)
+# Copy tools/nodes.example.py → tools/nodes.local.py and fill in your nodes.
+_dir = os.path.dirname(os.path.abspath(__file__))
+_local = os.path.join(_dir, "nodes.local.py")
+_example = os.path.join(_dir, "nodes.example.py")
+if not os.path.exists(_local):
+    print(f"Error: {_local} not found. Copy nodes.example.py and configure your nodes.", file=sys.stderr)
+    sys.exit(1)
+_ns = {}
+exec(open(_local).read(), _ns)
+NODE_CONFIG = _ns["NODE_CONFIG"]
 
 _health_cache = {}
 HEALTH_CACHE_TTL = 30
