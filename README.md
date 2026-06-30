@@ -13,9 +13,19 @@ This repository provides tools and configurations to allow AI agents (Gemini, Cl
 | cmp70hx-gpu | .13 | CMP 70HX | 8GB | Classification, `gemma4:e4b` |
 | cmp30hx-1 | .14 | CMP 30HX | 6GB | Classification, `gemma4:e4b` |
 | cmp30hx-2 | .16 | CMP 30HX | 6GB | Classification, `gemma4:e4b` |
-| Yuki | .6 | RX 7900 XTX | 24GB | **LOCKED** — bot active, read-only |
+| Yuki | .6 | RX 7900 XTX | 24GB | **LOCKED** — trade bot active, Ollama unavailable |
 
 > ❌ Pecorine (.8) removed — P100 x4 decommissioned
+
+## Orchestrator Node
+
+| Model | Nodes | Fallback Order |
+|---|---|---|
+| `erukude/multiagent-orchestrator:3b` | kokkoro (.5), kumo (.10) | .5 → .10 → .80 |
+
+- **Primary**: kokkoro (.5) — 2x RTX 3060, 24GB VRAM
+- **Secondary**: kumo (.10) — 2x Tesla P4, 16GB VRAM, always-on
+- **Tertiary**: kurumi (.80) — RTX 3080, 10GB VRAM
 
 ## Available Models (Verified 2026-06-29)
 
