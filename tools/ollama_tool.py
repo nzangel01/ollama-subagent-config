@@ -154,8 +154,8 @@ def query_with_fallback(model, prompt, timeout=120, preferred_node=None):
 
 
 ORCHESTRATOR_MODEL = "erukude/multiagent-orchestrator:3b"
-# Prefer kumo (.10) for orchestrator — always-on, low latency for 3B
-ORCHESTRATOR_NODE = (".10", ".5", ".80")  # fallback order: kumo → kokkoro → kurumi
+# Prefer kokkoro (.5) for orchestrator (low latency RTX 3060) and fallback to kumo (.10, always-on PVE)
+ORCHESTRATOR_NODE = (".5", ".10", ".80")  # fallback order: kokkoro → kumo → kurumi
 
 
 def orchestrate(task: str, agents: list[dict]) -> dict | None:
