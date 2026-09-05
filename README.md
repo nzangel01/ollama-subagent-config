@@ -2,38 +2,48 @@
 
 This repository provides tools and configurations to allow AI agents (Gemini, Claude, Opencode) to offload data processing, classification, and reasoning tasks to your local Ollama GPU fleet.
 
-## Fleet Nodes (verified 2026-06-29)
+## Fleet Nodes (verified 2026-09-05 — live `curl /api/tags` on every node)
 
-| Node | IP | GPU | VRAM | Best For |
-|---|---|---|---|---|
-| Silvia | .25 | Arc B580 | 12GB | Main logic, local inference |
-| Kokkoro | .5 | 2x RTX 3060 | 24GB | `gemma4:31b` reasoning (offline 17:00 daily) |
-| Kurumi | .80 | RTX 3080 | 10GB | Fast reasoning, vision |
-| Kumo | .10 | 2x Tesla P4 | 16GB | Classification, `gemma4:e4b` |
-| cmp70hx-gpu | .13 | CMP 70HX | 8GB | Classification, `gemma4:e4b` |
-| cmp30hx-1 | .14 | CMP 30HX | 6GB | Classification, `gemma4:e4b` |
-| cmp30hx-2 | .16 | CMP 30HX | 6GB | Classification, `gemma4:e4b` |
-| Yuki | .6 | RX 7900 XTX | 24GB | **LOCKED** — trade bot active, Ollama unavailable |
+| Node | Endpoint | GPU | VRAM | Bandwidth | Best For |
+|---|---|---|---|---|---|
+| **Silvia** | `127.0.0.1:11434` | Arc B580 (Vulkan) | 12GB | 456 GB/s | Fastest in fleet. **Ceiling ~10B** — a 14B spills to CPU and times out |
+| **Kokkoro** | `.5:11434` | 2x RTX 3060 | 24GB | 360 GB/s | Largest single pool. Runs 30B fully on GPU (99% resident) |
+| **Kumo** | `.10:11434`, `:11435`, `:11436` | 2x Tesla P4 | 16GB | 192 GB/s | Always-on batch / classify. 3 parallel instances |
+| **Yuki** | `.6:11434` | RX 7900 XTX (ROCm gfx1100) | 24GB | 960 GB/s | ⚠️ **Trade bot host — coordinate before use.** Ollama is up and GPU-visible |
 
-> ❌ Pecorine (.8) removed — P100 x4 decommissioned
+### Not inference nodes — do not route here
+| Node | Why |
+|---|---|
+| cmp70hx `.13` | **ComfyUI on :8188 only** — no Ollama |
+| Kurumi `.80` | Owner's gaming PC — off-limits |
+| cmp30hx `.14` / `.16` | VMs stopped |
+| Pecorine `.8` | P100 x4 decommissioned |
+| BC-250 `.87` | MoE-only experiment box, usually powered off |
+
+### Notes that cost us time
+- **Kokkoro is now one Ollama instance across both cards** (`CUDA_VISIBLE_DEVICES=0,1`, drop-in override). The old split — `ollama.service` on GPU0 `:11434` + `ollama-gpu1.service` on GPU1 `:11435` — meant a single process saw only 12GB, so a 30B model landed 82% in system RAM. Port `.5:11435` is retired.
+- **Check residency, not just "does it load".** `curl <node>:11434/api/ps` and compare `size_vram` to `size`; anything under 100% falls off a cliff rather than degrading smoothly.
+- **Yuki keeps `/` at 49GB by design.** Large files belong on `/var/lib/docker` (300GB free). Ollama's libs and models are bind-mounted there — a symlink does not work because the `ollama` user cannot traverse `/var/lib/docker`.
 
 ## Orchestrator Node
 
-| Model | Nodes | Fallback Order |
+| Model | Primary | Fallback |
 |---|---|---|
-| `erukude/multiagent-orchestrator:3b` | kokkoro (.5), kumo (.10) | .5 → .10 → .80 |
+| `erukude/multiagent-orchestrator:3b` | kokkoro `.5` | kumo `.10` |
 
-- **Primary**: kokkoro (.5) — 2x RTX 3060, 24GB VRAM
-- **Secondary**: kumo (.10) — 2x Tesla P4, 16GB VRAM, always-on
-- **Tertiary**: kurumi (.80) — RTX 3080, 10GB VRAM
+Kurumi has been removed from the fallback chain — it is a personal machine, not fleet capacity.
 
-## Available Models (Verified 2026-06-29)
+## Available Models (verified 2026-09-05)
 
 | Model | Tier | Best For |
 |---|---|---|
 | `gemma4:e4b` | Fast | Classification, atomic tasks (all nodes) |
+| `qwen3.5:latest` (9.7B) | Fast | Silvia's sweet spot — fully GPU-resident, real `tool_calls` |
+| `qwen3-coder:30b` | Heavy | Kokkoro only. Agentic coding, emits structured `tool_calls` |
 | `gemma4:12b` | Medium | Reasoning, summarize |
 | `gemma4:27b` / `gemma4:31b` | Heavy | Complex reasoning, code review |
+
+> ⚠️ **Gemma models cannot drive a tool-using agent.** Every `gemma4` variant we tested writes the call out as prose ("I'll call calc...") instead of emitting a structured `tool_calls` array, so the harness never sees it. Verified working: `qwen3.5`, `qwen3:14b`, `qwen3-coder:30b`, `gpt-oss:20b`. Test any new model with a one-shot tool-call request before wiring it into an agent.
 | `qwen2.5:7b` / `qwen2.5:14b` | Medium | Multilingual, code |
 | `erukude/multiagent-orchestrator:3b` | Router | Task routing brain |
 | `nomic-embed-text` | Embed | RAG embeddings |
